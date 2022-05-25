@@ -196,8 +196,8 @@ def test_prefit_ebm():
     clf = ExplainableBoostingClassifier(n_jobs=1, interactions=0, max_rounds=0)
     clf.fit(X, y)
 
-    for additive_term in clf.additive_terms_:
-        has_non_zero = np.any(additive_term)
+    for partial in clf.partials_:
+        has_non_zero = np.any(partial)
         assert not has_non_zero
 
 
@@ -216,8 +216,8 @@ def test_ebm_synthetic_regression():
 def valid_ebm(ebm):
     assert ebm.term_features_[0] == (0,)
 
-    for additive_term in ebm.additive_terms_:
-        all_finite = np.isfinite(additive_term).all()
+    for partial in ebm.partials_:
+        all_finite = np.isfinite(partial).all()
         assert all_finite
 
 
@@ -729,9 +729,9 @@ def test_json_classification():
     feature_types[0] = 'nominal'
     clf = ExplainableBoostingClassifier(max_bins=10, max_interaction_bins=4, feature_types=feature_types, interactions=[(1,2), (2,3)])
     clf.fit(X, y)
-    clf.additive_terms_[0][0] = np.nan
-    clf.additive_terms_[0][1] = np.inf
-    clf.additive_terms_[0][2] = -np.inf
+    clf.partials_[0][0] = np.nan
+    clf.partials_[0][1] = np.inf
+    clf.partials_[0][2] = -np.inf
     json_text = clf._to_json()
 
 def test_json_multiclass():
@@ -762,9 +762,9 @@ def test_json_dp_classification():
     feature_types[0] = 'nominal'
     clf = DPExplainableBoostingClassifier(max_bins=10, feature_types=feature_types)
     clf.fit(X, y)
-    clf.additive_terms_[0][0] = np.nan
-    clf.additive_terms_[0][1] = np.inf
-    clf.additive_terms_[0][2] = -np.inf
+    clf.partials_[0][0] = np.nan
+    clf.partials_[0][1] = np.inf
+    clf.partials_[0][2] = -np.inf
     json_text = clf._to_json()
 
 def test_json_dp_regression():

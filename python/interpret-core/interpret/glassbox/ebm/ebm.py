@@ -597,9 +597,9 @@ class BaseEBM(BaseEstimator):
 
         breakpoint_iteration = np.array(breakpoint_iteration, np.int64)
 
-        bagged_additive_terms = (np.array([model[idx] for model in models], np.float64) for idx in range(len(term_features)))
+        bagged_partials = (np.array([model[idx] for model in models], np.float64) for idx in range(len(term_features)))
 
-        term_features, bagged_additive_terms = _order_terms(term_features, bagged_additive_terms)
+        term_features, bagged_partials = _order_terms(term_features, bagged_partials)
 
         if is_differential_privacy:
             # for now we only support mains for DP models
@@ -615,10 +615,10 @@ class BaseEBM(BaseEstimator):
                 term_features
             )
 
-        additive_terms, term_standard_deviations, intercept = _process_terms(
+        partials, standard_deviations, intercept = _process_terms(
             n_classes, 
             n_samples, 
-            bagged_additive_terms, 
+            bagged_partials, 
             bin_weights,
             bag_weights
         )
@@ -661,9 +661,9 @@ class BaseEBM(BaseEstimator):
         # per-term
         self.term_features_ = term_features
         self.bin_weights_ = bin_weights
-        self.bagged_additive_terms_ = bagged_additive_terms
-        self.additive_terms_ = additive_terms
-        self.term_standard_deviations_ = term_standard_deviations
+        self.bagged_partials_ = bagged_partials
+        self.partials_ = partials
+        self.standard_deviations_ = standard_deviations
 
         # general
         self.intercept_ = intercept
@@ -733,7 +733,7 @@ class BaseEBM(BaseEstimator):
         for term_idx in range(len(self.term_features_)):
             term = {}
             term['features'] = [self.feature_names_in_[feature_idx] for feature_idx in self.term_features_[term_idx]]
-            term['scores'] = EBMUtils.jsonify_lists(self.additive_terms_[term_idx].tolist())
+            term['partial'] = EBMUtils.jsonify_lists(self.partials_[term_idx].tolist())
             if hasattr(self, 'bin_counts_') and self.bin_counts_[term_idx] is not None:
                 term['bin_counts'] = self.bin_counts_[term_idx].tolist()
             term['bin_weights'] = EBMUtils.jsonify_lists(self.bin_weights_[term_idx].tolist())
@@ -763,7 +763,7 @@ class BaseEBM(BaseEstimator):
             self.feature_types_in_, 
             self.bins_, 
             self.intercept_, 
-            self.additive_terms_, 
+            self.partials_, 
             self.term_features_
         )
 
@@ -783,17 +783,17 @@ class BaseEBM(BaseEstimator):
         check_is_fitted(self, "has_fitted_")
 
         mod_counts = remove_last2(getattr(self, 'bin_counts_', self.bin_weights_), self.bin_weights_)
-        mod_additive_terms = remove_last2(self.additive_terms_, self.bin_weights_)
-        mod_term_standard_deviations = remove_last2(self.term_standard_deviations_, self.bin_weights_)
+        mod_partials = remove_last2(self.partials_, self.bin_weights_)
+        mod_standard_deviations = remove_last2(self.standard_deviations_, self.bin_weights_)
         for term_idx, feature_idxs in enumerate(self.term_features_):
-            mod_additive_terms[term_idx] = trim_tensor(mod_additive_terms[term_idx], trim_low=[True] * len(feature_idxs))
-            mod_term_standard_deviations[term_idx] = trim_tensor(mod_term_standard_deviations[term_idx], trim_low=[True] * len(feature_idxs))
+            mod_partials[term_idx] = trim_tensor(mod_partials[term_idx], trim_low=[True] * len(feature_idxs))
+            mod_standard_deviations[term_idx] = trim_tensor(mod_standard_deviations[term_idx], trim_low=[True] * len(feature_idxs))
             mod_counts[term_idx] = trim_tensor(mod_counts[term_idx], trim_low=[True] * len(feature_idxs))
 
         # Obtain min/max for model scores
         lower_bound = np.inf
         upper_bound = -np.inf
-        for errors, scores in zip(mod_term_standard_deviations, mod_additive_terms):
+        for errors, scores in zip(mod_standard_deviations, mod_partials):
             lower_bound = min(lower_bound, np.min(scores - errors))
             upper_bound = max(upper_bound, np.max(scores + errors))
 
@@ -810,10 +810,10 @@ class BaseEBM(BaseEstimator):
         density_list = []
         keep_idxs = []
         for term_idx, feature_idxs in enumerate(self.term_features_):
-            model_graph = mod_additive_terms[term_idx]
+            model_graph = mod_partials[term_idx]
 
             # NOTE: This uses stddev. for bounds, consider issue warnings.
-            errors = mod_term_standard_deviations[term_idx]
+            errors = mod_standard_deviations[term_idx]
 
             if len(feature_idxs) == 1:
                 keep_idxs.append(term_idx)
@@ -1046,7 +1046,7 @@ class BaseEBM(BaseEstimator):
                 data_dicts.append(data_dict)
 
             for term_idx, binned_data in eval_terms(X, n_samples, self.feature_names_in_, self.feature_types_in_, self.bins_, self.term_features_):
-                scores = self.additive_terms_[term_idx][tuple(binned_data)]
+                scores = self.partials_[term_idx][tuple(binned_data)]
                 feature_idxs = self.term_features_[term_idx]
                 for row_idx in range(n_samples):
                     term_name = term_names[term_idx]
@@ -1064,7 +1064,7 @@ class BaseEBM(BaseEstimator):
                 self.feature_types_in_, 
                 self.bins_, 
                 self.intercept_, 
-                self.additive_terms_, 
+                self.partials_, 
                 self.term_features_
             )
 
@@ -1083,9 +1083,9 @@ class BaseEBM(BaseEstimator):
 
         selector = gen_local_selector(data_dicts, is_classification=is_classifier(self))
 
-        additive_terms = remove_last2(self.additive_terms_, self.bin_weights_)
+        partials = remove_last2(self.partials_, self.bin_weights_)
         for term_idx, feature_idxs in enumerate(self.term_features_):
-            additive_terms[term_idx] = trim_tensor(additive_terms[term_idx], trim_low=[True] * len(feature_idxs))
+            partials[term_idx] = trim_tensor(partials[term_idx], trim_low=[True] * len(feature_idxs))
 
         internal_obj = {
             "overall": None,
@@ -1094,7 +1094,7 @@ class BaseEBM(BaseEstimator):
                 {
                     "explanation_type": "ebm_local",
                     "value": {
-                        "scores": additive_terms,
+                        "scores": partials,
                         "intercept": self.intercept_,
                         "perf": perf_list,
                     },
@@ -1152,14 +1152,14 @@ class BaseEBM(BaseEstimator):
         if style == 'avg_weight':
             importances = np.empty(len(self.term_features_), np.float64)
             for i in range(len(self.term_features_)):
-                mean_abs_score = np.abs(self.additive_terms_[i])
+                mean_abs_score = np.abs(self.partials_[i])
                 if is_classifier(self) and 2 < len(self.classes_):
                     mean_abs_score = np.average(mean_abs_score, axis=-1)
                 mean_abs_score = np.average(mean_abs_score, weights=self.bin_weights_[i])
                 importances.itemset(i, mean_abs_score)
             return importances
         elif style == 'min_max':
-            return np.array([np.max(tensor) - np.min(tensor) for tensor in self.additive_terms_], np.float64)
+            return np.array([np.max(tensor) - np.min(tensor) for tensor in self.partials_], np.float64)
         else:
             raise ValueError(f"Unrecognized style: {style}")
 
@@ -1272,7 +1272,7 @@ class ExplainableBoostingClassifier(BaseEBM, ClassifierMixin, ExplainerMixin):
             self.feature_types_in_, 
             self.bins_, 
             self.intercept_, 
-            self.additive_terms_, 
+            self.partials_, 
             self.term_features_
         )
 
@@ -1302,7 +1302,7 @@ class ExplainableBoostingClassifier(BaseEBM, ClassifierMixin, ExplainerMixin):
             self.feature_types_in_, 
             self.bins_, 
             self.intercept_, 
-            self.additive_terms_, 
+            self.partials_, 
             self.term_features_
         )
 
@@ -1340,7 +1340,7 @@ class ExplainableBoostingClassifier(BaseEBM, ClassifierMixin, ExplainerMixin):
             self.feature_types_in_, 
             self.bins_, 
             self.intercept_, 
-            self.additive_terms_, 
+            self.partials_, 
             self.term_features_
         )
 
@@ -1465,7 +1465,7 @@ class ExplainableBoostingRegressor(BaseEBM, RegressorMixin, ExplainerMixin):
             self.feature_types_in_, 
             self.bins_, 
             self.intercept_, 
-            self.additive_terms_, 
+            self.partials_, 
             self.term_features_
         )
 
@@ -1490,7 +1490,7 @@ class ExplainableBoostingRegressor(BaseEBM, RegressorMixin, ExplainerMixin):
             self.feature_types_in_, 
             self.bins_, 
             self.intercept_, 
-            self.additive_terms_, 
+            self.partials_, 
             self.term_features_
         )
 
@@ -1609,7 +1609,7 @@ class DPExplainableBoostingClassifier(BaseEBM, ClassifierMixin, ExplainerMixin):
             self.feature_types_in_, 
             self.bins_, 
             self.intercept_, 
-            self.additive_terms_, 
+            self.partials_, 
             self.term_features_
         )
 
@@ -1639,7 +1639,7 @@ class DPExplainableBoostingClassifier(BaseEBM, ClassifierMixin, ExplainerMixin):
             self.feature_types_in_, 
             self.bins_, 
             self.intercept_, 
-            self.additive_terms_, 
+            self.partials_, 
             self.term_features_
         )
 
@@ -1765,7 +1765,7 @@ class DPExplainableBoostingRegressor(BaseEBM, RegressorMixin, ExplainerMixin):
             self.feature_types_in_, 
             self.bins_, 
             self.intercept_, 
-            self.additive_terms_, 
+            self.partials_, 
             self.term_features_
         )
 

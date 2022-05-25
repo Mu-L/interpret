@@ -75,7 +75,7 @@ def multiclass_postprocess(
     return {"feature_graphs": updated_feature_graphs, "intercepts": intercepts}
 
 def multiclass_postprocess2(
-    n_classes, n_samples, additive_terms, intercept, bin_counts
+    n_classes, n_samples, partials, intercept, bin_counts
 ):
     """ Postprocesses multiclass model graphs with desired properties.
     """
@@ -86,8 +86,8 @@ def multiclass_postprocess2(
 
     # TODO: we can probably do all the classes together, and that would make it generalize to interactions as well
 
-    for i in range(len(additive_terms)):
+    for i in range(len(partials)):
         for k in range(n_classes):
-            mean = np.sum(np.multiply(additive_terms[i][:, k], bin_counts[i])) / n_samples
-            additive_terms[i][:, k] = np.subtract(additive_terms[i][:, k], mean)
+            mean = np.sum(np.multiply(partials[i][:, k], bin_counts[i])) / n_samples
+            partials[i][:, k] = np.subtract(partials[i][:, k], mean)
             intercept[k] += mean

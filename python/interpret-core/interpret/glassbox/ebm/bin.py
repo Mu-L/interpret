@@ -2129,7 +2129,7 @@ def ebm_decision_function(
     feature_types_in, 
     bins, 
     intercept, 
-    additive_terms, 
+    partials, 
     term_features
 ):
     if type(intercept) is float or len(intercept) == 1:
@@ -2139,7 +2139,7 @@ def ebm_decision_function(
 
     if 0 < n_samples:
         for term_idx, binned_data in eval_terms(X, n_samples, feature_names_in, feature_types_in, bins, term_features):
-            scores += additive_terms[term_idx][tuple(binned_data)]
+            scores += partials[term_idx][tuple(binned_data)]
 
     return scores
 
@@ -2150,7 +2150,7 @@ def ebm_decision_function_and_explain(
     feature_types_in, 
     bins, 
     intercept, 
-    additive_terms, 
+    partials, 
     term_features
 ):
     if type(intercept) is float or len(intercept) == 1:
@@ -2163,7 +2163,7 @@ def ebm_decision_function_and_explain(
 
     if 0 < n_samples:
         for term_idx, binned_data in eval_terms(X, n_samples, feature_names_in, feature_types_in, bins, term_features):
-            term_scores = additive_terms[term_idx][tuple(binned_data)]
+            term_scores = partials[term_idx][tuple(binned_data)]
             scores += term_scores
             explanations[:, term_idx] = term_scores
 

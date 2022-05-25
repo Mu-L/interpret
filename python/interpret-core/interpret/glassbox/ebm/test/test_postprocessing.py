@@ -49,8 +49,8 @@ def test_multiclass_postprocess_smoke():
 def valid_ebm(ebm):
     assert ebm.term_features_[0] == (0,)
 
-    for additive_term in ebm.additive_terms_:
-        all_finite = np.isfinite(additive_term).all()
+    for partial in ebm.partials_:
+        all_finite = np.isfinite(partial).all()
         assert all_finite
 
 def _smoke_test_explanations(global_exp, local_exp, port):
